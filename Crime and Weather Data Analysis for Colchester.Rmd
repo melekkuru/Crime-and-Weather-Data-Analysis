@@ -1,0 +1,861 @@
+---
+title: 'MA304 Data Visualization'
+author: "Assignment MA-304 "
+date: "Melek Kuru (mk23930@essex.ac.uk) "
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, results = "markup")
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+install.packages("dplyr")
+install.packages("ggplot2",dependencies=TRUE)
+install.packages("viridisLite")
+library(dplyr)
+library(zoo)
+library(ggplot2)
+library(ggthemes)
+library(tidyr)
+library(ggcorrplot)
+library(plotly)
+library(xts)
+library(lubridate)
+install.packages("rmarkdown")
+library(dplyr)
+library(knitr)
+install.packages("webshot")
+webshot::install_phantomjs()  # Only necessary if using `webshot`
+
+# Or for webshot2
+install.packages("webshot2")
+knitr::opts_chunk$set(webshot = "webshot2")  # If using `webshot2`
+
+```
+
+
+
+```{r, eval=TRUE}
+# Read the temperature file and assign to a more descriptive variable
+temperature_data <- read.csv("temp2023.csv", header = TRUE)
+str(temperature_data)
+
+# Read the crime file and assign to a more descriptive variable
+crime_records <- read.csv("crime23.csv", header = TRUE)
+str(crime_records)
+
+```
+**DATA PREPROCESSING:**
+
+We prepared our Colchester datasets for analysis by ensuring that the tools
+`dplyr` and `xts` worked well together. We filled in missing data points in
+the temperature records and standardized the dates in the crime records.
+With these datasets pruned and primed, we’re ready to dive into
+the heart of Colchester’s climate and crime stories, armed with 
+data that’s now as clear as a crisp spring morning.
+```{r, eval=TRUE}
+# Configure dplyr to avoid conflicts and set options for xts
+conflictRules('dplyr', exclude = 'lag')
+options(xts.warn_dplyr_breaks_lag = FALSE)
+
+# Check if there are missing values in the temperature data variables
+check_miss_values <- dplyr::summarise_at(temperature_data, vars(everything()),
+                            list(n = ~sum(!is.na(.)), missing = ~sum(is.na(.))))
+check_miss_values
+
+# Drop SnowDepcm & PreselevHp variables then check
+#the dimensions/names of the cleaned data
+temperature_cleaned = select(temperature_data, -c(SnowDepcm, PreselevHp))
+dim(temperature_cleaned)
+
+# Check for duplicate rows in the cleaned temperature data
+temperature_cleaned = distinct(temperature_cleaned)
+dim(temperature_cleaned)
+
+
+# Replace missing values in the Precmm column with zeros
+# Assuming most of the missing values are in summer
+temperature_cleaned$Precmm[is.na(temperature_cleaned$Precmm)] <- 0
+
+# Replace missing values in the lowClOct column with the median value
+median_lowClOct <- median(temperature_cleaned$lowClOct, na.rm = TRUE)
+temperature_cleaned$lowClOct[is.na(temperature_cleaned$lowClOct)] <- median_lowClOct
+
+# Replace missing values in the SunD1h column with the median value
+median_SunD1h <- median(temperature_cleaned$SunD1h, na.rm = TRUE)
+temperature_cleaned$SunD1h[is.na(temperature_cleaned$SunD1h)] <- median_SunD1h
+
+# Rename the data subset for clarity
+temperature_final <- temperature_cleaned
+
+# Check if there are missing values in the variables after handling them
+missing_values_final <- sum(is.na(temperature_final))
+cat("Number of missing values after imputation:", missing_values_final)
+
+# Change the date character to date format using lubridate's ymd function
+tsdates <- ymd(temperature_final$Date)
+temperature_final$Date <- tsdates
+
+# Check the names of the variables in the final temperature dataset
+names(temperature_final)
+
+
+```
+
+```{r, eval=TRUE}
+# Check if there are missing values in the crime records dataset
+check_miss_values_crime <- dplyr::summarise_all(crime_records, 
+                          list(n = ~sum(!is.na(.)), missing = ~sum(is.na(.))))
+check_miss_values_crime
+
+# Drop location_subtype & context variables then check the 
+#dimensions/names of the cleaned data
+crime_records_cleaned = select(crime_records, -c(context, location_subtype))
+dim(crime_records_cleaned)
+
+# Check for duplicate rows in the cleaned crime data
+crime_records_cleaned = distinct(crime_records_cleaned)
+dim(crime_records_cleaned)
+
+# Change the date character to date format by appending "-01"
+#to make it a full date string
+tsdates_crime <- paste0(crime_records_cleaned$date, "-01")
+crime_records_cleaned$date <- as.Date(tsdates_crime, format = "%Y-%m-%d")
+
+# Rename the data subset for clarity
+crimes_final <- crime_records_cleaned
+
+# Check the names of the variables in the final crime dataset
+names(crimes_final)
+
+
+
+```
+```{r, eval=TRUE}
+# Generate summary for Temperature Data
+summary_temperature <- temperature_final %>%
+  summarise(
+    Total_Observations = n(),
+    Min_Temperature = min(TemperatureCAvg, na.rm = TRUE),
+    Max_Temperature = max(TemperatureCAvg, na.rm = TRUE),
+    Mean_Temperature = mean(TemperatureCAvg, na.rm = TRUE),
+    Median_Temperature = median(TemperatureCAvg, na.rm = TRUE)
+  )
+
+# Generate summary for Crime Data
+summary_crime <- crimes_final %>%
+  summarise(
+    Total_Observations = n(),
+    Unique_Crime_Types = n_distinct(category),
+    First_Date = min(date),
+    Last_Date = max(date)
+  )
+
+# Print the summaries in a nice table format using knitr
+kable(summary_temperature, caption = "Summary Statistics for Temperature Data")
+kable(summary_crime, caption = "Summary Statistics for Crime Data")
+
+
+
+
+
+
+
+```
+TABLE: 
+
+In 2023, Colchester experienced different types of weather and had to deal 
+with various crime issues. Every day, the temperature was carefully noted,
+ranging from a freezing -2.6°C to a warm 23.1°C, with an average of about 
+10.92°C throughout the year. This detailed weather record sets the stage 
+for studying connections between weather and city life, including crime.
+
+At the same time, records of crimes were kept, totaling 6,878 incidents 
+spread across 14 different types. These records cover the period from 
+January 1st to December 1st, giving insights into when and where crimes 
+happened. Understanding these patterns is important for predicting future
+crime trends and using resources wisely. This report will look at how
+changes in temperature throughout the year might affect crime rates and 
+suggest ways to improve safety and city planning in Colchester.
+
+By analyzing these records, this study aims to reveal how weather and crime
+are linked, providing useful insights for local authorities and community 
+leaders to address the city's challenges more effectively.
+
+
+```{r, eval=TRUE}
+#HISTOGRAM
+
+# Calculate summary statistics for some relevant variables and print
+weather_stats <- summary(temperature_final
+      [, c("TemperatureCAvg", "Precmm", "WindkmhInt" )])
+kable(weather_stats, format = "html", 
+      caption = "Summary Statistics for Weather")
+
+# Histogram plot for the average temperature
+hist(temperature_final$TemperatureCAvg,
+     breaks = seq(-10, 40, by = 1),
+     xlim = c(-5, 30),
+     ylim = c(0, 0.1),
+     ylab = "Density",
+     xlab = "Temperature Average (Celsius)",
+     main = "Probability Density of Temperature Distribution",
+     prob = TRUE,
+     col = 'yellow')
+
+```
+**Temperature in Colchester:**
+
+In Colchester, the weather in 2023 had two main patterns. It was often about 
+10 degrees Celsius – not too hot or cold. This mild weather might be why people 
+choose to do outdoor activities. Then there were fewer days, but still quite 
+a few, when it was around 20 degrees Celsius – perfect for enjoying the sunshine.
+But days with an average temperature around 25 degrees were rare, so really hot
+days were special. Looking at these numbers, we can guess when people might use
+more energy to heat their homes or when ice cream might sell the most!
+
+
+```{r, eval=TRUE}
+#HISTOGRAM
+
+# Convert the date column to a Date object if not already
+crimes_final$date <- as.Date(crimes_final$date)
+
+# Aggregate the number of crimes per day
+daily_crimes <- crimes_final %>%
+  group_by(date) %>%
+  summarise(daily_crime_count = n(), .groups = 'drop')
+
+# Ensure the summary is correctly calculated
+print(head(daily_crimes))
+# Histogram for daily crime counts, styled to match the temperature histogram
+hist(daily_crimes$daily_crime_count,
+     breaks = seq(min(daily_crimes$daily_crime_count),
+                  max(daily_crimes$daily_crime_count), by = 1),
+     main = "Probability Density of Daily Crime Distribution",
+     xlab = "Daily Crime Count",
+     ylab = "Density",
+     col = "grey", 
+     # Use grey color for the bars to match the temperature histogram
+     border = "darkblue", 
+     # Use black color for the border to match the temperature histogram
+     xlim = c(0, max(daily_crimes$daily_crime_count) + 1),
+     # Extend x-axis a bit beyond the max count
+     prob = TRUE) # Use TRUE to show density
+
+# Since the ylim is not specified, it will be automatically 
+#determined based on the data
+# Optionally, if you want to add a density line, it should be black 
+#to match the histogram style
+lines(density(daily_crimes$daily_crime_count, na.rm = TRUE), 
+      col = "red", lwd = 2)
+```
+**Crime in Colchester:**
+
+In Colchester, while looking at the crime reports for 2023, we notice that most 
+days were quite peaceful, with crime counts typically below 100. This could mean
+that for a good part of the year, the community enjoyed a calm environment. 
+However, there were a few exceptions. On some rare days, the crime count shot up
+to more than 500. These unusual spikes could have been due to special events or
+holidays when more people were out and about, which might have led to more 
+chances for crimes to happen. Understanding these patterns can help the police
+prepare better for these busy days.
+
+```{r, eval=TRUE}
+#CORRELATION
+
+var_weather <- temperature_final[, c("TemperatureCAvg","TdAvgC", "HrAvg",
+                                     "PresslevHp","Precmm","VisKm","WindkmhInt", 
+                                     "TemperatureCMax", "TemperatureCMin",
+                                     "TotClOct", "SunD1h")]
+# Compute the correlation matrix
+cor_matrix <- round(cor(var_weather), 1)
+
+# Adjust the size of the labels to prevent overlap, if needed
+label_size <- 4  # Adjust this number as needed to prevent label overlap
+
+# Visualize the correlation matrix
+G4 = ggcorrplot(cor_matrix, hc.order = TRUE, type = "lower", lab = TRUE,
+                lab_size = label_size, # Use the label size defined above
+                outline.col = "black", ggtheme = ggplot2::theme_bw(),
+                colors = c("#2166ac", "white", "#67a9cf")) # Arranged colors to a blue gradient
+
+# Add a title to the plot
+G4 <- G4 + ggtitle("Correlation Analysis between Weather Variables")
+
+# Only use ggplotly if HTML output is expected
+if (knitr::is_html_output()) {
+  ggplotly(G4)
+} else {
+  G4
+}
+
+
+
+```
+**Correlation :**
+
+Temperature Variables: There's a strong positive correlation (0.9 and above) 
+between TemperatureCMax, TemperatureCAvg, and TemperatureCMin. This is expected 
+as they are measures of temperature at different times of the day.
+
+Humidity and Dew Point: HrAvg (average humidity) shows a strong positive
+correlation with TdAvgC (average temperature of dew point), which is logical 
+since humidity is related to the presence of moisture (dew) in the air.
+
+Humidity and Precipitation: HrAvg is moderately correlated with Precmm
+(precipitation in millimeters). This suggests that higher humidity might 
+be associated with more rainfall, which is consistent with what we know 
+about weather patterns.
+
+Visibility and Humidity: VisKm (visibility in kilometers) has a negative 
+correlation with HrAvg, indicating that higher humidity may be associated with
+lower visibility, likely due to fog or mist.
+
+Cloud Cover: TotClOct (total cloud cover in eighths of the sky) does not have a 
+strong correlation with most other variables, except for a moderate negative
+correlation with SunD1h (sunshine duration in hours). More cloud cover naturally
+leads to less sunshine.
+
+Temperature and Pressure: There is a small positive correlation between 
+temperature (TemperatureCAvg) and pressure (PresslevHp), 
+but it is not very strong.
+
+
+
+```{r, eval=TRUE}
+#PIE CHART
+
+# Convert the 'category' column to a factor if it's not already.
+crimes_final$category <- factor(crimes_final$category)
+
+# Calculate the percentage for each category.
+category_perc <- round(100 * prop.table(table(crimes_final$category)), 2)
+
+# Order the categories by percentage in decreasing order.
+ordered_perc <- category_perc[order(category_perc, decreasing = TRUE)]
+
+# Create a data frame with category names and percentages.
+category_data <- data.frame(
+  Category = names(ordered_perc),
+  Percentage = as.numeric(ordered_perc)
+)
+
+# Use a distinct color palette - RColorBrewer can help.
+num_categories <- length(unique(category_data$Category))
+colors <- RColorBrewer::brewer.pal(min(num_categories, 12), "Set3")
+
+# If you have more than 12 categories, we will need to repeat the palette.
+if (num_categories > 12) {
+  colors <- colorRampPalette(colors)(num_categories)
+}
+
+# Create the static pie chart using ggplot2
+pie_chart <- ggplot(category_data, aes(x = "", y = Percentage, fill = Category)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  scale_fill_manual(values = colors) +
+  theme(legend.position = "bottom") +
+  labs(fill = "Category", title = 'Percentage of Crimes by Category')
+
+# Display the static pie chart.
+pie_chart
+
+```
+**Crime Patterns in Colchester: A Reflection of Social Dynamics**
+
+As the sun rises over Colchester, it sheds light not only on the city's
+historical paths but also on its present-day streets—a scene where each
+piece of crime data contributes to the city's story. The pie chart in 
+front of us, filled with different colors, tells stories of challenges and
+successes, struggles and hard work, all shown through the numbers it presents.
+
+The biggest part of our pie chart is taken up by violent crime, making up 38.3%.
+It shows a town dealing with aggression, where every number represents a call
+for understanding, action, and solutions that bring people together and heal
+wounds. This high level of violence calls for strong community efforts—programs 
+that not only patrol the streets but also offer support to homes, providing
+comfort and strength to those affected.
+
+Following closely are issues like anti-social behavior and criminal damage,
+including arson, covering nearly a fifth of our chart. These are signs of
+unrest, voices that are not heard or addressed, perhaps stemming from changes 
+in society, economic uncertainty, or the struggles of young people trying to
+find their way. These issues need intervention, creating spaces for engagement
+and opportunities for creativity instead of chaos.
+
+Shoplifting, accounting for 8.05%, indicates silent struggles within markets 
+and malls, suggesting unmet needs or inequalities in the digital age. It prompts
+us to take a closer look at our economy and social safety nets.
+
+And let's not forget public order offenses, at 7.73%, which reflect disturbances
+spilling over into public spaces, showing a community coping with the stresses
+of societal changes, possibly still adjusting to life after the pandemic.
+
+Each percentage point, each category, is more than just a number—it's a story,
+a voice, a life intersecting with the law. Together, they paint a picture of
+community life, urging us to take action. We need to create policies that
+protect, develop programs that empower, and build a network of support and
+unity. We should walk the streets of Colchester not in fear but with 
+determination to build a town based on safety and peace.
+
+As we plan for the future, let the pie chart not just be a record of the past
+but a guide toward what can be—a Colchester united in its diversity, secure
+in its neighborhoods, and peaceful under its skies.
+
+```{r, eval=TRUE}
+#TIME SERIES 
+
+# Compute the number of crimes per month by grouping some categories
+crime_data_group2 <- crimes_final %>%
+  group_by(date, category) %>%
+  summarise(num_of_cat_crimes = n(), .groups = "drop")
+
+# Select the category to plot and compare
+selected_categories <- c("violent-crime", "anti-social-behaviour")
+
+# Filter the data for the selected categories
+selected_categories_data <- crime_data_group2 %>%
+  filter(category %in% selected_categories)
+
+# Combine original data into an xts object
+tsnums3 <- xts(data.frame(num_of_cat_crimes = 
+                            selected_categories_data$num_of_cat_crimes),
+                            order.by = as.Date(selected_categories_data$date))
+
+ts_df3 <- as.data.frame(tsnums3) # change to xts to data frame again
+
+ts_df3$category <- selected_categories_data$category
+
+# Plot using ggplot2 only
+tsplot3 <- ggplot(ts_df3, aes(x = index(tsnums3),
+                              y = num_of_cat_crimes, color = category)) +
+                              geom_line(linewidth = 0.8) +
+             geom_smooth(method = "loess", se = FALSE, aes(group = category)) +
+              # Add LOESS smoothing to both categories
+  labs(x = "Date", y = "Number of Crimes", 
+       title = "Number of Category Crimes per Month/2023",
+       color = "Category") +
+  theme_bw() +
+  theme(legend.position = "right", plot.title = element_text(hjust = 0.5))
+
+# Print the static plot
+tsplot3
+
+
+```
+**Parallel Patterns in Crime Trends: Violent Acts and Social Disruptions**
+
+The chart before us lays out the ups and downs of two types of crimes
+in Colchester during 2023: violent crimes and anti-social behavior. 
+The lines on the graph, one for each crime type, seem to move together
+through the months. Violent crimes happen more often, but both kinds
+seem to get higher or lower at the same times.
+
+At the start of the year, we see fewer instances of anti-social behavior
+while violent crimes don't drop much. This difference tells us that what 
+causes these two might not be the same. There's a noticeable increase in
+violent crimes around the middle of the year — a time when people are 
+likely out and about more because of the warmer weather.
+
+This pattern can give the police and community leaders important clues.
+It seems there might be specific times when it's a good idea to have more 
+activities and support available to help keep the peace. The aim is to 
+find out what causes these crimes to happen at the same time and figure
+out how to prevent them.
+
+By looking at this chart, we can better understand when and why crimes
+might happen in Colchester. This can help us make plans to keep our
+streets safer throughout the year.
+
+
+
+
+
+
+```{r, eval=TRUE}
+#SCATTER PLOT
+
+# Group and summarize the temperature data by month
+monthly_temperature <- temperature_final %>%
+  group_by(Month = floor_date(Date, "month")) %>%
+  summarise(AverageTemp = mean(TemperatureCAvg, na.rm = TRUE), .groups = "drop")
+
+# Group and summarize the crime data by month
+monthly_crime_totals <- crimes_final %>%
+  group_by(Month = floor_date(date, "month")) %>%
+  summarise(total_crimes = n(), .groups = "drop")
+
+# Merge the temperature and crime data by month
+combined_data <- merge(monthly_temperature, monthly_crime_totals, by = "Month")
+
+# Create a scatter plot to compare temperatures and crime rates
+scatter_plot <- ggplot(combined_data, aes(x = AverageTemp, y = total_crimes)) +
+                geom_point(color = "blue", alpha = 0.7) +
+             labs(x = "Average Temperature (°C)", y = "Total Number of Crimes",
+          title = "Comparison of Average Temperature and Total Crime Counts") +
+          theme_minimal()
+
+# Print the scatter plot
+print(scatter_plot)
+
+# Calculate the correlation coefficient
+correlation <- cor(combined_data$AverageTemp, combined_data$total_crimes)
+
+# Print the correlation coefficient
+print(correlation) #0.2420076
+
+
+
+
+
+```
+
+
+
+**Exploring the Warmth of Crime: **
+**The Subtle Influence of Temperature on Crime Rates**
+
+Our look at Colchester's crime data for 2023 shows something curious: when
+it gets warmer, it looks like crime goes up a bit too. The graph we've made
+has a bunch of dots that are supposed to tell us if there's a link between
+the average temperature and how many crimes happen. There's a slight trend
+that on hotter days, there might be a few more crimes than usual.
+
+But, here’s the thing—this link is really weak. There's a correlation
+coefficient of 0.24, indicating a weak relationship. The trend isn't
+strong, and the dots are pretty spread out. That means we can't just
+say it's the temperature causing more crimes. There's a whole bunch of 
+other stuff that could be playing a part, like what's going on in the
+community, whether people have jobs, and how well the police are doing their job.
+
+So, what's our takeaway from this? Well, if we want to keep our streets safer,
+we shouldn't just look at the weather report. We need to think about all the
+different things that could be leading to trouble and deal with those too.
+And we need to keep an eye on this as the year goes by, to make sure we're
+doing all we can to nip crime in the bud, come rain or shine.
+```{r, eval=TRUE}
+#BOX PLOT
+
+# Aggregate crime data to get total crimes per day
+daily_crime_counts <- crimes_final %>%
+  group_by(date) %>%
+  summarise(TotalCrimes = n(), .groups = "drop")
+
+# Establish a threshold for high crime days using the median
+crime_threshold <- median(daily_crime_counts$TotalCrimes, na.rm = TRUE)
+
+# Categorize days as High or Low crime
+daily_crime_counts <- daily_crime_counts %>%
+  mutate(CrimeLevel = ifelse(TotalCrimes > crime_threshold, 
+                             "High Crime", "Low Crime"))
+
+# Merge the temperature data with the crime level data
+# Make sure both datasets have the date formatted identically 
+# and the columns properly named
+combined_data <- temperature_final %>%
+  rename(date = Date) %>%  # Make sure Date column is the same in both datasets
+  inner_join(daily_crime_counts, by = "date")
+
+# Create the boxplot using the correct temperature column name
+boxplot <- ggplot(combined_data, aes(x = CrimeLevel, 
+                                     y = TemperatureCAvg, fill = CrimeLevel)) +
+                geom_boxplot() +labs(x = "Crime Level", y = "Temperature (°C)",
+               title = "Temperature Distribution on High vs. Low Crime Days") +
+               theme_minimal() + scale_fill_brewer(palette = "Set1")
+
+# Print the plot
+print(boxplot)
+
+
+```
+**Temperature Tendencies on Divergent Crime Days**
+
+Our analysis of Colchester’s 2023 crime data reveals a notable trend: days with
+higher crime rates tend to be warmer. The red box, representing high crime days,
+shows a temperature distribution that's generally higher compared to low crime
+days, depicted in blue.
+
+This suggests that warmer temperatures might have a role in driving crime,
+possibly because more people are outdoors or there's increased social 
+interaction. However, it's important to note that there's overlap in 
+temperature ranges between high and low crime days, cautioning against
+drawing definitive conclusions.
+
+In light of this trend, policing strategies could consider increasing vigilance
+on warmer days when temperatures exceed the median range. Nevertheless, it's 
+crucial to interpret these findings with caution, as they indicate a 
+correlation, not causation, and multiple factors contribute to crime rates.
+
+
+
+```{r, eval=TRUE}
+#DENSITY PLOT
+
+# Merge temperature and crime datasets by date
+merged_data <- merge(temperature_final, crimes_final, 
+                     by.x = "Date", by.y = "date", all = TRUE)
+
+# Plot density plot
+density_plot <- ggplot(merged_data, aes(x = TotClOct, y = ..density..)) +
+  geom_density(fill = "lightblue", alpha = 0.6) +
+  labs(x = "Total Cloud Cover (%)", y = "Density",
+       title = "Density Plot of Crime Rates by Total Cloud Cover") +
+  theme_minimal()
+
+# Print the plot
+print(density_plot)
+
+
+
+
+
+```
+**Clouds Over Colchester: Do They Cast a Shadow on Crime?**
+
+Looking at Colchester's crime data for the year, there seems to be a connection
+between crime rates and different levels of cloud cover. The density plot shows
+that there are certain points where more crimes tend to happen, depending on the
+amount of cloud cover.
+
+Rather than a straightforward relationship where more clouds mean more crime, 
+the plot suggests that there are specific levels of cloud cover that coincide 
+with higher crime rates. This could mean that certain weather conditions, like
+when it's not completely clear but not fully cloudy either, might be linked 
+to more criminal activity.
+
+It's important to remember that just because there's a pattern in the plot, it 
+doesn't mean that cloud cover directly causes crime. There could be other
+factors involved. For example, maybe certain weather conditions make people 
+more likely to commit crimes, or they affect how likely someone 
+is to become a victim.
+
+This initial look at the data raises questions and shows that we need to 
+dig deeper to understand how weather, along with other social and environmental 
+factors, might influence crime in Colchester.
+
+
+```{r, eval=TRUE}
+#PAIR PLOT
+
+# Load RColorBrewer for color palettes
+library(RColorBrewer)
+palette_name <- "Paired"
+
+# Generate the color palette
+palette_colors <- brewer.pal(n = 11, name = palette_name)
+
+# Selecting only the weather variables for the scatter plot 
+#matrix from the final cleaned dataset
+var_weather <- temperature_final[, c("TemperatureCAvg", "TdAvgC", "HrAvg",
+                                     "PresslevHp","Precmm", "VisKm", 
+                                      "WindkmhInt", "TemperatureCMax", 
+                                     "TemperatureCMin", "TotClOct", "SunD1h")]
+
+# Create the scatter plot matrix with colors
+pairs(var_weather, col = palette_colors)
+
+
+
+```
+**Decoding Colchester's Weather Patterns**
+
+In our climate study, we've uncovered a fascinating scatter plot matrix,
+each color representing a different weather pairing. This intricate grid 
+helps us understand the relationships between temperature, humidity,
+pressure, and more.
+
+For example, the connection between maximum and minimum temperatures is 
+clear—a constant from morning to night. Similarly, the interplay of dew
+point temperature and humidity mirrors our misty mornings and dewy 
+landscapes.
+
+The scatter plots also reveal how pressure levels relate to precipitation, 
+offering insights into sudden rain or dry spells.
+
+Each dot on these plots marks a day in Colchester's life, distinguished by 
+color to show different relationships. This isn't just data—it's the heartbeat
+of our town, the changing seasons, and the whispers of the wind,
+captured in charts.
+
+Our scatter plot matrix isn't just an image; it's a conversation starter—a
+puzzle waiting to be solved. It prompts questions about correlations and how 
+weather patterns affect daily life.
+
+Ultimately, this visual representation of Colchester's climate is a guide to 
+our future, helping us navigate the ever-changing atmosphere.
+
+
+
+
+```{r, eval=TRUE}
+ #SCATTER PLOT
+
+# Group the crime data by street name and calculate the total number of crimes for each
+crime_by_street <- crimes_final %>%
+  group_by(street_id, street_name) %>%
+  summarise(TotalCrimes = n())
+
+# Sort the data by total number of crimes in descending order
+sorted_streets <- crime_by_street %>%
+  arrange(desc(TotalCrimes))
+
+# Select the top 5 streets with the highest crime rates
+top5_streets <- head(sorted_streets, n = 5)
+
+# Create a scatter plot to visualize the total number of crimes by street name for the top 5 streets
+scatterplot <- ggplot(top5_streets, aes(x = street_name, y = TotalCrimes, label = street_id)) +
+  geom_point(color = "darkred", size = 3) +
+  geom_text(size = 3, vjust = -0.5, hjust = 1) +  # Add street IDs as labels
+  labs(x = "Street Name", y = "Total Number of Crimes",
+       title = "Top 5 Streets with Highest Crime Rates") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))  # Rotate x-axis labels for better readability
+
+# Print the scatter plot
+print(scatterplot)
+
+
+```
+**Whispers from Colchester's Shadows: Uncovering Stories of the Streets**
+
+In the heart of Colchester, where history meets modern life, scattered points
+on our map reveal a truth often overlooked, marked in cautionary red. These 
+points, like signals, shed light on stories from Blackene Gardens, Church 
+Street, Cowdray Avenue, the busy Shopping Area, and St Nicholas Street—each 
+a part of the city's complex crime story.
+
+In Blackene Gardens, the red point reflects tales of hidden alleys and quick
+thefts disappearing like shadows at dawn. Church Street, with its history and
+lively atmosphere, has seen tensions rise occasionally leading to conflicts.
+
+As night falls, Cowdray Avenue changes. Here, the red point marks chance
+encounters and secretive dealings. Similarly, the busy Shopping Area has 
+hidden spots where thefts occur unnoticed.Perhaps more precautions should 
+be taken for these streets with the highest crime rates.
+
+```{r, eval=TRUE}
+#LEAFLET
+
+library(leaflet)
+
+# Initialize the map with base tiles
+map <- leaflet(crimes_final) %>% 
+  addTiles(group = "OSM (default)") %>%
+  addProviderTiles(providers$Stadia.AlidadeSmooth, group = "Alidade Smooth") %>%
+  setView(lng = 0.901230, lat = 51.889801, zoom = 13)
+
+# Add circles on the map for each crime category with vibrant colors
+map1 <- map %>%
+addCircles(data = crimes_final[crimes_final$category == "bicycle-theft",],
+             ~long, ~lat, group = "Bicycle Theft", col = "#e63946",
+             popup = ~paste("Bicycle Theft", "<br>Street Name:",
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "drugs",], 
+             ~long, ~lat, group = "Drugs", col = "#f4a261",
+             popup = ~paste("Drugs", "<br>Street Name:", street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "anti-social-behaviour",], 
+             ~long, ~lat, group = "Anti-Social Behaviour", col = "#2a9d8f",
+             popup = ~paste("Anti-Social Behaviour", "<br>Street Name:",
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "robbery",], 
+             ~long, ~lat, group = "Robbery", col = "#264653",
+             popup = ~paste("Robbery", "<br>Street Name:", street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "vehicle-crime",], 
+             ~long, ~lat, group = "Vehicle Crime", col = "#2b2d42",
+             popup = ~paste("Vehicle Crime", "<br>Street Name:", 
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "theft-from-the-person",], 
+             ~long, ~lat, group = "Theft from the Person", col = "#8d99ae",
+             popup = ~paste("Theft from the Person", "<br>Street Name:",
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "criminal-damage-arson",], 
+             ~long, ~lat, group = "Criminal Damage", col = "#ef233c",
+             popup = ~paste("Criminal Damage", "<br>Street Name:",
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "burglary",], 
+             ~long, ~lat, group = "Burglary", col = "#d00000",
+             popup = ~paste("Burglary", "<br>Street Name:", street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "possession-of-weapons",], 
+             ~long, ~lat, group = "Possession of Weapons", col = "#023e8a",
+             popup = ~paste("Possession of Weapons", "<br>Street Name:",
+                            street_name)) %>%
+addCircles(data = crimes_final[crimes_final$category == "shoplifting",], 
+             ~long, ~lat, group = "Shoplifting", col = "#0077b6",
+             popup = ~paste("Shoplifting", "<br>Street Name:", street_name)) %>%
+ addCircles(data = crimes_final[crimes_final$category == "violent-crime",], 
+             ~long, ~lat, group = "Violent Crime", col = "#03045e",
+             popup = ~paste("Violent Crime", "<br>Street Name:", street_name))
+
+# Control layers for toggling visibility of crime categories
+map1 %>%
+  addLayersControl(
+    baseGroups = c("OSM (default)", "Alidade Smooth"),
+    overlayGroups = c("Bicycle Theft", "Drugs", "Anti-Social Behaviour", 
+                      "Robbery", "Vehicle Crime", "Theft from the Person", 
+                      "Criminal Damage", "Burglary", "Possession of Weapons", 
+                      "Shoplifting", "Violent Crime"),
+    options = layersControlOptions(collapsed = FALSE))
+
+
+
+
+
+```
+
+
+**Navigating the Crime Landscape: Insights from Colchester’s Interactive Map**
+
+In our quest to understand the spatial dynamics of criminal activity within
+Colchester, we have employed an interactive leaflet map that reveals the
+geographical nuances of crime distribution. Each category of crime is
+illuminated by a specific hue, turning our city map into a mosaic of insights:
+
+**Bicycle Theft (Red, #e63946):** Marked in an unmistakable red, bicycle thefts dot
+the landscape, with clusters appearing around key transit routes and
+recreational areas, perhaps hinting at opportunistic crime hotspots.
+
+**Drugs (Orange, #f4a261):** The orange circles give us a view into the locations
+where drug-related incidents are most prevalent, possibly correlating with
+nightlife hubs or areas of lesser vigilance.
+
+**Anti-Social Behaviour (Teal, #2a9d8f):** Teal marks anti-social behavior, 
+painting a picture of social discontent in specific neighborhoods, potentially 
+guiding community outreach initiatives.
+
+**Robbery (Dark Slate, #264653):** In dark slate, robberies are charted, often
+concentrated in commercial districts, suggesting the need for enhanced security
+measures in these regions.
+
+**Vehicle Crime (Charcoal, #2b2d42):** The charcoal circles that mark 
+vehicle-related crimes tend to cluster around major parking facilities 
+and thoroughfares.
+
+**Theft from the Person (Slate Gray, #8d99ae):** Represented in slate gray,
+theft from the person incidents can often be found in the busier parts of the
+city, where pedestrian traffic is high.
+
+**Criminal Damage and Arson (Crimson, #ef233c):** Spots of crimson expose areas 
+afflicted by property damage and arson, demanding attention to urban decay or 
+the need for conflict resolution.
+
+**Burglary (Deep Red, #d00000):** Deep red circles indicate burglary, which may 
+align with residential areas, bringing to light the vulnerabilities
+of home security.
+
+**Possession of Weapons (Navy, #023e8a):** The navy color used for possession of
+weapons can be a marker for areas that might benefit from preventative policing
+and educational programs.
+
+**Shoplifting (Blue, #0077b6):** The blue points illustrate shoplifting occurrences,
+predictably found in retail-heavy zones, signaling loss prevention as a priority.
+
+**Violent Crime (Dark Blue, #03045e):** Lastly, violent crime is denoted in dark blue,
+often dispersed throughout the city but with notable concentrations that could 
+require a multi-faceted approach to curb
+
+
