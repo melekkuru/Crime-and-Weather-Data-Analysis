@@ -1,83 +1,75 @@
-# Crime and Weather Data Analysis
+# Crime and Weather Data Analysis — Colchester 2023
 
-This repository contains an analysis of crime and weather data for Colchester in 2023. The goal of this project is to explore the relationship between weather conditions and crime rates using data visualization and statistical methods.
+Exploring the relationship between crime patterns and weather conditions in Colchester using data visualization and statistical analysis in R.
+
+> Developed as part of the **Data Visualization (MA304)** module at the University of Essex.
 
 ---
 
 ## Overview
 
-Understanding how weather impacts crime can provide valuable insights for city planning and law enforcement. This project leverages crime and weather datasets to uncover patterns and trends.
+Understanding how weather influences crime can provide valuable insights for city planning and law enforcement. This project combines two datasets — police-reported crime records and daily temperature data for Colchester in 2023 — to uncover patterns, trends, and potential correlations.
 
-Key features of the project include:
-
-- **Crime Data Analysis**: Examining crime patterns and distributions across various categories.
-- **Weather Data Analysis**: Analyzing temperature and other weather variables.
-- **Combined Analysis**: Identifying potential correlations or trends between weather conditions and crime rates.
-- **Data Visualization**: Clear and informative visualizations to summarize the findings.
-
----
-
-## Data Sources
-
-- **Crime Data**: Contains detailed information about crimes reported in Colchester in 2023.
-- **Weather Data**: Includes daily temperature records and weather conditions for the same period.
+**The analysis covers:**
+- Crime distribution across categories and time periods
+- Temperature trends and seasonal patterns
+- Combined analysis of weather conditions vs. crime rates
+- Interactive and static visualizations to communicate findings
 
 ---
 
-## Repository Structure
+## Data sources
 
-```plaintext
+| Dataset | Description | File |
+|---------|-------------|------|
+| Crime data | Crimes reported in Colchester, 2023 | `DATA/crime23.csv` |
+| Weather data | Daily temperature records, 2023 | `DATA/temp2023.csv` |
+
+---
+
+## Key findings
+
+- Crime rates show seasonal variation with peaks during warmer months
+- Certain crime categories are more sensitive to temperature changes
+- Correlation analysis reveals statistically significant relationships between weather and specific crime types
+- Interactive visualizations provide drill-down capability for detailed exploration
+
+---
+
+## Project structure
+
+```
 Crime-and-Weather-Data-Analysis/
-├── data/
-│   ├── crime23.csv         # Crime dataset
-│   ├── temp2023.csv        # Weather dataset
-├── analysis/
-│   └── Crime_and_Weather_Analysis.Rmd # R Markdown file for analysis
-├── results/
-│   └── visualizations/     # Generated plots and visualizations
-├── README.md               # Project description and instructions
-└── requirements.txt        # Required R packages
+├── DATA/
+│   ├── crime23.csv
+│   └── temp2023.csv
+├── Crime and Weather Data Analysis for Colchester.Rmd
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## How to Use
+## Getting started
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/melekkuru/Crime-and-Weather-Data-Analysis.git
-cd Crime-and-Weather-Data-Analysis
+**Prerequisites:** R (4.0+) and RStudio
+
+```r
+# Install required packages
+install.packages(c("ggplot2", "dplyr", "lubridate", "tidyr", "plotly",
+                   "ggcorrplot", "ggthemes", "zoo", "xts", "knitr"))
 ```
 
-### 2. Install Dependencies
-Ensure you have **R** installed. Then, install the required R packages:
-```R
-install.packages(c("ggplot2", "dplyr", "lubridate", "tidyr", "readr"))
-```
-
-### 3. Run the Analysis
-Open the R Markdown file in RStudio and knit it to produce a report:
-```plaintext
-analysis/Crime_and_Weather_Analysis.Rmd
-```
+Open `Crime and Weather Data Analysis for Colchester.Rmd` in RStudio and knit to produce the report.
 
 ---
 
-## Key Findings
+## Technologies
 
-- **Crime Trends**: Analysis shows peaks in crime rates during specific weather conditions.
-- **Weather Impact**: Identified correlations between temperature fluctuations and certain types of crime.
-- **Insights**: Provides actionable insights for policymakers and law enforcement.
+R · ggplot2 · Plotly · dplyr · tidyr · R Markdown
 
 ---
 
-## Skills Demonstrated
+## License
 
-- Data Cleaning and Preprocessing
-- Exploratory Data Analysis (EDA)
-- Data Visualization (ggplot2)
-- Statistical Analysis
-- R Markdown Reporting
-
----
-
+This project is for educational purposes. Feel free to use it as a reference.
